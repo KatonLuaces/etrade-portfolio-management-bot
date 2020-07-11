@@ -1,0 +1,12 @@
+#Ignore configuration file
+config.ini
+
+#Byte-compiled
+__pycache__/
+*.py[cod]
+
+#log files
+.log
+
+#test files
+test.py
