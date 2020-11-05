@@ -162,8 +162,10 @@ class Accounts:
                 uncategorizedHoldings = self.getUncategorizedHoldings(
                     self.createStockDict(data))
                 if(len(uncategorizedHoldings) > 0):
-                    print("Uncategorized Holdings:")
+                    print("Uncategorized holdings:")
                     print(uncategorizedHoldings)
+                else:
+                    print("No uncategorized holdings")
             else:
                 # Handle errors
                 logger.debug("Response Body: %s", response.text)
@@ -237,58 +239,6 @@ class Accounts:
             else:
                 print("Error: Portfolio API service error")
 
-    def rebalance(self):
-        """
-        Call portfolio API to retri^eve a list of positions held in the specified account
-
-        :param self: Passes in parameter authenticated session and information on selected account
-        """
-        # URL for the API endpoint
-        url = self.base_url + "/v1/accounts/" + \
-            self.account["accountIdKey"] + "/portfolio.json"
-
-        # Make API call for GET request
-        response = self.session.get(url, header_auth=True)
-        logger.debug("Request Header: %s", response.request.headers)
-
-        print("\nPortfolio:")
-
-        # Handle and parse response
-        if response is not None and response.status_code == 200:
-            parsed = json.loads(response.text)
-            logger.debug("Response Body: %s", json.dumps(
-                parsed, indent=4, sort_keys=True))
-            if(devMode):
-                with open('fakeData.json') as f:
-                    data = json.load(f)
-            else:
-                data = response.json()
-            # TODO format output such that variables are of equal length (e.g variations amongst stock symbols does not make for uneven columns)
-            if data is not None and "PortfolioResponse" in data and "AccountPortfolio" in data["PortfolioResponse"]:
-                self.balancePortfolio(data)
-            else:
-                # Handle errors
-                logger.debug("Response Body: %s", response.text)
-                if response is not None and "headers" in response and "Content-Type" in response.headers \
-                        and response.headers['Content-Type'] == 'application/json' \
-                        and "Error" in response.json() and "message" in response.json()["Error"] \
-                        and response.json()["Error"]["message"] is not None:
-                    print("Error: " + response.json()["Error"]["message"])
-                else:
-                    print("Error: Portfolio API service error")
-        elif response is not None and response.status_code == 204:
-            print("None")
-        else:
-            # Handle errors
-            logger.debug("Response Body: %s", response.text)
-            if response is not None and "headers" in response and "Content-Type" in response.headers \
-                    and response.headers['Content-Type'] == 'application/json' \
-                    and "Error" in response.json() and "message" in response.json()["Error"] \
-                    and response.json()["Error"]["message"] is not None:
-                print("Error: " + response.json()["Error"]["message"])
-            else:
-                print("Error: Portfolio API service error")
-
     def displayBalanceInfo(self, data):
         for acctPortfolio in data["PortfolioResponse"]["AccountPortfolio"]:
             if acctPortfolio is not None and "Position" in acctPortfolio:
@@ -318,41 +268,6 @@ class Accounts:
                     print(print_str)
             else:
                 print("None")
-
-    def balancePortfolio(self, data):
-        holdings = self.createStockDict(data)
-        adjustment = None
-        totalPortfolioVal = 0
-        for symbol in holdings:
-            totalPortfolioVal += holdings[symbol]["marketValue"]
-        amts = {"Bonds": 0, "US Stock": 0, "International Stock": 0}
-        print("Total portfolio value: {}".format(totalPortfolioVal))
-        if(self.valueOfHoldings(securities.BONDS, holdings) / totalPortfolioVal < targetBondProportion):
-            adjustment = self.calculateAdjustment(targetBondProportion, self.valueOfHoldings(
-                securities.BONDS, holdings), totalPortfolioVal)
-            amts["Bonds"] = adjustment
-            print("Primary adjustment of {} in bonds".format(adjustment))
-        elif(self.valueOfHoldings(securities.US_STOCKS, holdings) / targetUSStockProportion < self.valueOfHoldings(securities.INTL_STOCKS, holdings) / targetIntlStockProportion):
-            adjustment = self.calculateAdjustment(targetUSStockProportion, self.valueOfHoldings(
-                securities.US_STOCKS, holdings), totalPortfolioVal)
-            amts["US Stock"] = adjustment
-            print("Primary adjustment of {} in US stock".format(adjustment))
-        else:
-            adjustment = self.calculateAdjustment(targetIntlStockProportion, self.valueOfHoldings(
-                securities.INTL_STOCKS, holdings), totalPortfolioVal)
-            amts["International Stock"] = adjustment
-            print("Primary adjustment of {} in International stock".format(adjustment))
-        remainder = int(config["DEFAULT"]["MONTHLY_PURCHASE_VAL"]) - adjustment
-        if(remainder > 0):
-            for holding in amts:
-                if(holding == "Bonds"):
-                    amts["Bonds"] += targetBondProportion * remainder
-                if(holding == "US Stock"):
-                    amts["US Stock"] += targetUSStockProportion * remainder
-                if(holding == "International Stock"):
-                    amts["International Stock"] += targetIntlStockProportion * remainder
-        print(amts)
-        #self.createPurchaseOrder("VTI", "2000")
 
     def createPurchaseOrder(self, stockSymbol, value):
         # TODO confirm that "EQ" is the correct order type and that DOLLAR quantity type gives expected results (e.g quantity = mktval / dollarQuantity)
@@ -588,26 +503,26 @@ class Rebalancer:
             adjustment = self.calculateAdjustment(
                 targetBondProportion, currentDist["Bonds"], portfolioVal)
             amts["Bonds"] += adjustment
-            print("Primary adjustment of {} in bonds".format(adjustment))
         elif(currentDist["US Stock"] / targetUSStockProportion < currentDist["International Stock"] / targetIntlStockProportion):
             adjustment = self.calculateAdjustment(
                 targetUSStockProportion, currentDist["US Stock"], portfolioVal)
             amts["US Stock"] += adjustment
-            print("Primary adjustment of {} in US stock".format(adjustment))
         elif(currentDist["International Stock"] / targetIntlStockProportion < currentDist["US Stock"] / targetUSStockProportion):
             adjustment = self.calculateAdjustment(
                 targetIntlStockProportion, currentDist["International Stock"], portfolioVal)
             amts["International Stock"] += adjustment
-            print("Primary adjustment of {} in International stock".format(adjustment))
+            currentDist["International Stock"] += adjustment
         else:
             amts["Bonds"] += targetBondProportion * remaining
+            currentDist["Bonds"] += adjustment
             amts["US Stock"] += targetUSStockProportion * remaining
+            currentDist["US Stock"] += adjustment
             amts["International Stock"] += targetIntlStockProportion * remaining
+            currentDist["International Stock"] += adjustment
             adjustment = remaining
         remainder = remaining - adjustment
         if(remainder > 0):
-            print("Recursing")
-            self.rebalanceUtil(amts, currentDist, remainder)
+            return self.rebalanceUtil(amts, currentDist, remainder)
         else:
             return amts
 

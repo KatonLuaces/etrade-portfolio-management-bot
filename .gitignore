@@ -6,7 +6,7 @@ __pycache__/
 *.py[cod]
 
 #log files
-.log
+*.log
 
 #test files
 test.py
